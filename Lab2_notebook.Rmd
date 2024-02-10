@@ -1,0 +1,341 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+library(dplyr)
+library(ggplot2)
+library(sf)
+library(tidyr)
+```
+
+#Reads csv file
+```{r}
+csv_path <- "C:/Users/danas/Documents/School/Earth Systems R/data/"
+csv_name <- "20190724_Georeferenced_ABBRV_2018AnnualSAR_0.csv"
+csv_file <- paste(csv_path, csv_name, sep="")
+sar_csv <- read.csv(csv_file)
+```
+
+```{r}
+names(sar_csv)
+unique(sar_csv$State)
+```
+
+
+```{r}
+missions_by_state <- sar_csv %>%
+  group_by(State) %>%
+  summarise(
+    total_missions = sum(Ill_or_Injured) + sum(Not_Ill_or_Injured) +sum(Unfounded),
+    total_fatalities = sum(Fatality),
+    total_injuries = sum(Ill_or_Injured),
+    total_non_fatalities = sum(Not_Ill_or_Injured),
+    total_unfound = sum(Unfounded),
+    total_air_operations = sum(NPS_Air_Operations_Costs != 0) + sum(Military_Air_Operations_Costs != 0)
+  ) %>%
+  arrange(desc(total_missions))
+
+missions_by_park <- sar_csv %>%
+  group_by(Park) %>%
+  summarise(
+    total_missions = sum(Ill_or_Injured) + sum(Not_Ill_or_Injured) +sum(Unfounded),
+    total_fatalities = sum(Fatality),
+    total_injuries = sum(Ill_or_Injured),
+    total_non_fatalities = sum(Not_Ill_or_Injured),
+    total_unfound = sum(Unfounded),
+    total_air_operation = sum(NPS_Air_Operations_Costs != 0) + sum(Military_Air_Operations_Costs != 0)
+  ) %>%
+  arrange(desc(total_missions))
+
+head(missions_by_state)
+head(missions_by_park)
+
+missions_by_state <- missions_by_state %>% arrange(desc(total_fatalities))
+print(missions_by_state)
+
+
+missions_by_park <- missions_by_park %>% arrange(desc(total_fatalities))
+print(missions_by_park)
+
+missions_by_state <- missions_by_state %>% arrange(desc(total_unfound))
+print(missions_by_state)
+
+missions_by_park <- missions_by_park %>% arrange(desc(total_unfound))
+print(missions_by_park)
+
+
+
+```
+Top Three States for Missions
+California : 468 Missions
+Utah : 411 Missions
+Arizona : 356 Missions
+
+Top Three National Parks for Missions: 
+Grand Canyon (AZ) : 333
+Sequoia and Kings Canyon (CA) : 237
+Rocky Mountain (CO) : 217
+
+Top Three States with Highest Recovery Missions (Fatal):
+Arizona : 23
+California : 20
+Washington : 12
+
+Top Three National Parks with Highest Recovery Missions:
+Organ Pipe Cactus (AZ) : 13
+Golden Gate (CA) : 10
+Grand Canyon (AZ) : 9
+
+Top Three National Parks with Most Unfound People
+Glacier Bay (AK)
+Grand Teton (WY)
+Pinnacles (CA) : 8
+
+
+
+
+#Index plot of SAR incidents lat/long
+```{r}
+plot(sar_csv$LONGITUDE, sar_csv$LATITUDE, 
+     xlab = "Longitude", ylab = "Latitude",
+     main = "Scatter Plot of Longitude vs. Latitude")
+```
+```{r}
+# Create a data frame with columns Fatality, Male, and Female
+df <- data.frame(sar_csv$Fatality, sar_csv$Male, sar_csv$Female)
+
+# Rename the columns for clarity
+colnames(df) <- c("Fatality", "Male", "Female")
+
+# Load the required library
+library(ggplot2)
+library(tidyr)
+
+# Reshape the data from wide to long format
+df_long <- pivot_longer(df, cols = c("Male", "Female"), names_to = "Gender", values_to = "Count")
+
+# Create the bar plot
+ggplot(df_long, aes(x = Fatality, y = Count, fill = Gender)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(title = "Fatality Comparison by Gender",
+       x = "Fatality", y = "Count") +
+  scale_fill_manual(values = c("Male" = "skyblue", "Female" = "pink")) +
+  theme_minimal()
+
+```
+
+Index plot of lat long SAR incidents
+```{r}
+plot(sar_csv$LONGITUDE, sar_csv$LATITUDE, 
+     xlab = "Longitude", ylab = "Latitude",
+     main = "Scatter Plot of Longitude vs. Latitude")
+```
+
+
+```{r}
+
+
+state_summary <- sar_csv %>%
+  group_by(State) %>%
+  summarise(total_missions = sum(Ill_or_Injured) + sum(Not_Ill_or_Injured) + sum(Unfounded))
+
+# Convert State to factor with levels ordered by total_missions
+state_summary$State <- factor(state_summary$State, levels = state_summary$State[order(state_summary$total_missions, decreasing = TRUE)])
+
+
+# Create the bar plot
+ggplot(state_summary, aes(x = State, y = total_missions)) +
+  geom_bar(stat = "identity", fill = "skyblue") +
+  labs(title = "State Comparison by Total Missions",
+       x = "State", y = "Total Missions") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+
+
+
+California Fatality by State Park
+```{r}
+# Create a data frame with columns Park and Fatality
+
+ca_data <- subset(sar_csv, State == "CA")
+df <- data.frame(Park = ca_data$Park, Fatality = ca_data$Fatality)
+
+
+# Reshape the data from wide to long format
+df_long <- pivot_longer(df, cols = "Fatality", names_to = "Fatalities", values_to = "Count")
+
+ggplot(df_long, aes(x = Park, y = Count, fill = Fatalities)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(title = "California Parks Comparison by Fatality",
+       x = "Park", y = "Count") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+```
+California Park Comparasion by Mission 
+```{r}
+ca_data <- subset(sar_csv, State == "CA")
+
+# Summarize data by park
+park_summary <- ca_data %>%
+  group_by(Park) %>%
+  summarise(total_missions = sum(Ill_or_Injured) + sum(Not_Ill_or_Injured) + sum(Unfounded ))
+
+
+# Create the bar plot
+ggplot(park_summary, aes(x = Park, y = total_missions)) +
+  geom_bar(stat = "identity", fill = "skyblue") +
+  labs(title = " California Parks Comparison by Total Missions",
+       x = "Park", y = "Total Missions") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+```{r}
+az_data <- subset(sar_csv, State == "AZ")
+
+# Summarize data by park
+park_summary <- az_data %>%
+  group_by(Park) %>%
+  summarise(total_missions = sum(Ill_or_Injured) + sum(Not_Ill_or_Injured) + sum(Unfounded ))
+
+
+# Create the bar plot
+ggplot(park_summary, aes(x = Park, y = total_missions)) +
+  geom_bar(stat = "identity", fill = "skyblue") +
+  labs(title = " Arizona Parks Comparison by Total Missions",
+       x = "Park", y = "Total Missions") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+
+
+Arizona Fatality by State Park
+```{r}
+# Create a data frame with columns Park and Fatality
+
+az_data <- subset(sar_csv, State == "AZ")
+df <- data.frame(Park = az_data$Park, Fatality = az_data$Fatality)
+
+
+# Reshape the data from wide to long format
+df_long <- pivot_longer(df, cols = "Fatality", names_to = "Fatalities", values_to = "Count")
+
+# Create the bar plot
+ggplot(df_long, aes(x = Park, y = Count, fill = Fatalities)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(title = " Arizona Parks Comparison by Fatality",
+       x = "Park", y = "Count") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+```
+```{r}
+ut_data <- subset(sar_csv, State == "UT")
+
+# Summarize data by park
+park_summary <- ut_data %>%
+  group_by(Park) %>%
+  summarise(total_missions = sum(Ill_or_Injured) + sum(Not_Ill_or_Injured) + sum(Unfounded ))
+
+
+# Create the bar plot
+ggplot(park_summary, aes(x = Park, y = total_missions)) +
+  geom_bar(stat = "identity", fill = "skyblue") +
+  labs(title = "Utah Parks Comparison by Total Missions",
+       x = "Park", y = "Total Missions") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+
+
+Utah Fatality by State Park
+```{r}
+# Create a data frame with columns Park and Fatality
+
+ut_data <- subset(sar_csv, State == "UT")
+df <- data.frame(Park = ut_data$Park, Fatality = ut_data$Fatality)
+
+
+# Reshape the data from wide to long format
+df_long <- pivot_longer(df, cols = "Fatality", names_to = "Fatalities", values_to = "Count")
+
+# Create the bar plot
+ggplot(df_long, aes(x = Park, y = Count, fill = Fatalities)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(title = "Utah Parks Comparison by Fatality",
+       x = "Park", y = "Count") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+
+Comparing Recovery Missions (Deceased Subject) vs Rescues (Live Subject)
+```{r}
+
+us_states_sf <- st_read("C:/Users/danas/Documents/School/Earth Systems R/data/cb_2018_us_state_500k.shp")
+
+# Subset data based on fatalities
+subset_data <- subset(sar_csv, !is.na(Fatality))
+
+# Plot
+ggplot() + 
+  geom_sf(data = us_states_sf, fill = NA) + 
+  geom_point(data = subset_data, aes(x = LONGITUDE, y = LATITUDE, size = Fatality, color = ifelse(Fatality == 0, "Non-Fatal", "Fatal"))) +
+  scale_color_manual(name = "Fatality",
+                     values = c("Non-Fatal" = "blue", "Fatal" = "red"),
+                     labels = c("Fatal Mission", "Non_Fatal Mission")) +
+  scale_size_continuous(name = "Number of Fatalities") +
+  coord_sf(xlim = c(-125, -65), ylim = c(25, 50), expand = FALSE) +  
+  theme_bw()
+             
+```
+
+
+
+Missions Injured vs Non Injured Subjects
+
+```{r}
+library(dplyr)
+
+
+# Filter data where injury occurred
+injuries_true <- sar_csv[sar_csv$Ill_or_Injured == TRUE, ]
+
+# Filter data where no injury occurred
+injuries_false <- sar_csv[sar_csv$Ill_or_Injured == FALSE, ]
+
+# Plot
+ggplot() + 
+  geom_sf(data = us_states_sf, fill = NA) +
+  geom_point(data = injuries_true, aes(x = LONGITUDE, y = LATITUDE), color = "red") +
+  geom_point(data = injuries_false, aes(x = LONGITUDE, y = LATITUDE), color = "blue") +
+  coord_sf(xlim = c(-125, -65), ylim = c(25, 50), expand = FALSE) +
+  theme_bw()
+
+
+```
+
+
+Missions Where Subject Was Not Located
+```{r}
+unfounded_true <- sar_csv[sar_csv$Unfounded == TRUE, ]
+
+
+
+# Plot
+ggplot() + 
+  geom_sf(data = us_states_sf, fill = NA) +
+  geom_point(data = unfounded_true, aes(x = LONGITUDE, y = LATITUDE), color = "red") +
+  coord_sf(xlim = c(-125, -65), ylim = c(25, 50), expand = FALSE) +
+  theme_bw()
+```
+
+Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Ctrl+Alt+I*.
+
